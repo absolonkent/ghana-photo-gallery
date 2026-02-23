@@ -1,5 +1,6 @@
 <?php
-ini_set('display_errors', 1);
+$isDev = getenv('APP_ENV') === 'development';
+ini_set('display_errors', $isDev ? '1' : '0');
 error_reporting(E_ALL);
 
 /* ================= CONFIG ================= */
@@ -8,13 +9,18 @@ $mediaDir = __DIR__ . '/media/';
 $perPage  = 20;
 $allowed  = ['jpg','jpeg','png','gif','webp'];
 
+if (!is_dir($mediaDir) || !is_readable($mediaDir)) {
+    http_response_code(500);
+    exit('Media directory is missing or not readable.');
+}
+
 /* ================= LOAD FILES ================= */
 
 $files = [];
 foreach (scandir($mediaDir) as $f) {
     if ($f === '.' || $f === '..') continue;
     $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
-    if (in_array($ext, $allowed)) {
+    if (in_array($ext, $allowed, true)) {
         $files[] = $f;
     }
 }
@@ -55,9 +61,9 @@ function buildMeta($filePath){
     return $meta;
 }
 
-$allMeta = [];
-foreach($files as $f){
-    $allMeta[] = buildMeta($mediaDir.$f);
+$pageMeta = [];
+foreach ($pageFiles as $f) {
+    $pageMeta[] = buildMeta($mediaDir . $f);
 }
 
 /* ================= DOWNLOAD ================= */
@@ -315,7 +321,7 @@ Kent Family Ghana Vacation Gallery<br />
 <section class="gallery">
 <?php foreach ($pageFiles as $i => $file): ?>
 <figure class="gallery-item">
-<img src="media/<?= htmlspecialchars($file) ?>" data-index="<?= $offset + $i ?>" loading="lazy">
+<img src="media/<?= htmlspecialchars($file) ?>" loading="lazy">
 <figcaption><?= htmlspecialchars(pathinfo($file, PATHINFO_FILENAME)) ?></figcaption>
 </figure>
 <?php endforeach; ?>
@@ -370,7 +376,7 @@ else echo '<span class="disabled">Next »</span>';
 
 <script>
 const images = [...document.querySelectorAll('.gallery img')];
-const allMeta = <?= json_encode($allMeta) ?>;
+const pageMeta = <?= json_encode($pageMeta, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 const lightbox = document.getElementById('lightbox');
 const lbImg = document.getElementById('lb-img');
@@ -385,13 +391,18 @@ let slideshowTimer = null;
 let presentationMode = false;
 
 function renderMeta(i){
- const m = allMeta[i] || {};
- lbMeta.innerHTML = `
- <strong>${m.filename || ''}</strong><br>
- Size: ${m.filesize || '-'}<br>
- ${m.camera ? 'Camera: '+m.camera+'<br>' : ''}
- ${m.taken ? 'Taken: '+m.taken : ''}
- `;
+ const m = pageMeta[i] || {};
+ const lines = [
+  m.filename || '',
+  `Size: ${m.filesize || '-'}`,
+  m.camera ? `Camera: ${m.camera}` : null,
+  m.taken ? `Taken: ${m.taken}` : null,
+ ].filter(Boolean);
+ lbMeta.replaceChildren(...lines.map((line, idx) => {
+  const node = document.createElement(idx === 0 ? 'strong' : 'span');
+  node.textContent = line;
+  return node;
+ }).flatMap((node, idx, arr) => idx < arr.length - 1 ? [node, document.createElement('br')] : [node]));
 }
 
 function openLightbox(i){
